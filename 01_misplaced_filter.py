@@ -22,6 +22,7 @@ __last_update__ = '12.05.2021'
 # ==============================================================================
 # import
 # ==============================================================================
+import glob
 import os
 import numpy as np
 import pandas as pd
@@ -33,9 +34,13 @@ import scipy.spatial as ssp
 import scipy.stats as sst
 from scipy import interpolate as sci
 import multiprocessing as mp
+import pyproj
 
 sys.path.append(r'D:\py-sele')
 import mail
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 # ==============================================================================
@@ -56,9 +61,41 @@ def build_edf(measurements, vInv=False):
     return StdF1
 
 
+def convert_coords_fr_wgs84_to_utm32_(epgs_initial_str, epsg_final_str,
+                                      first_coord, second_coord):
+    """
+    Purpose: Convert points from one reference system to a second
+    --------
+        In our case the function is used to transform WGS84 to UTM32
+        (or vice versa), for transforming the DWD and Netatmo station
+        coordinates to same reference system.
+
+        Used for calculating the distance matrix between stations
+
+    Keyword argument:
+    -----------------
+        epsg_initial_str: EPSG code as string for initial reference system
+        epsg_final_str: EPSG code as string for final reference system
+        first_coord: numpy array of X or Longitude coordinates
+        second_coord: numpy array of Y or Latitude coordinates
+
+    Returns:
+    -------
+        x, y: two numpy arrays containing the transformed coordinates in
+        the final coordinates system
+    """
+    # initial_epsg = pyproj.Proj(init=epgs_initial_str)
+    initial_epsg = pyproj.Proj(epgs_initial_str)
+    # final_epsg = pyproj.Proj(init=epsg_final_str)
+    final_epsg = pyproj.Proj(epsg_final_str)
+    x, y = pyproj.transform(initial_epsg, final_epsg,
+                            first_coord, second_coord)
+    return x, y
+
+
 def calc_p0_for_given_coordinates(args):
     (dwd_tree, net_north, net_east, savepath, path_dwd, df_netatmo,
-     stn_id) = args
+     stn_id, stn_name) = args
 
     print(stn_id)
 
@@ -126,6 +163,56 @@ def calc_p0_for_given_coordinates(args):
         dwd.close()
         return
 
+    # check available coordinates
+    scan_files = glob.glob(os.path.join(path_scans, '*.csv'))
+    coords_available = False
+    station_moved = False
+    for scan in scan_files:
+        mac_addresses = pd.read_csv(scan, sep=';', index_col=0,
+                                    dtype={'lon': np.float64,
+                                           'lat': np.float64})
+
+        try:
+            if coords_available:
+                if (mac_addresses.loc[stn_name.decode(), 'lon'] == init_lon) & (
+                        mac_addresses.loc[
+                            stn_name.decode(), 'lat'] == init_lat):
+                    continue
+                else:
+                    init_etrs89 = convert_coords_fr_wgs84_to_utm32_(
+                        '+init=epsg:4326', '+init=epsg:25832',
+                        init_lon, init_lat)
+
+                    etrs89 = convert_coords_fr_wgs84_to_utm32_(
+                        '+init=epsg:4326', '+init=epsg:25832',
+                        mac_addresses.loc[stn_name.decode(), 'lon'],
+                        mac_addresses.loc[stn_name.decode(), 'lat'])
+
+                    distance = np.sqrt((init_etrs89[0] - etrs89[0]) ** 2 + (
+                                init_etrs89[1] - etrs89[1]) ** 2)
+
+                    if distance < 50:
+                        continue
+                    else:
+                        print('station moved')
+                        station_moved = True
+
+            else:
+                init_lon = mac_addresses.loc[stn_name.decode(), 'lon']
+                init_lat = mac_addresses.loc[stn_name.decode(), 'lat']
+                coords_available = True
+
+            # print(os.path.basename(scan)[:10],
+            #       mac_addresses.loc[stn_name.decode(), 'lon'],
+            #       mac_addresses.loc[stn_name.decode(), 'lat'])
+        except KeyError:
+            continue
+
+    # divide in single years
+
+    if not station_moved:
+        return
+
     # initialize lists
     distance_list = []
     ik_list = []
@@ -168,8 +255,8 @@ def calc_p0_for_given_coordinates(args):
         net_indi[net_data == 0] = 1
 
         ax[0].scatter(distance,
-                    np.corrcoef(dwd_indi, net_indi)[0, 1],
-                    marker='o', c='black', s=2)
+                      np.corrcoef(dwd_indi, net_indi)[0, 1],
+                      marker='o', c='black', s=2)
 
         distance_list.append(distance)
         ik_list.append(np.corrcoef(dwd_indi, net_indi)[0, 1])
@@ -198,11 +285,11 @@ def calc_p0_for_given_coordinates(args):
         net_indi_p99[net_data >= dwd_tresh1] = 1
 
         ax[1].scatter(distance,
-                    np.corrcoef(dwd_indi_p99, net_indi_p99)[0, 1],
-                    marker='o', c='black', s=2)
+                      np.corrcoef(dwd_indi_p99, net_indi_p99)[0, 1],
+                      marker='o', c='black', s=2)
 
     plt.savefig(os.path.join(savepath,
-                             'ind_corr_p0_dwd_{}.png'.format(stn_id)))
+                             'diff_coord_ind_corr_p0_dwd_{}.png'.format(stn_id)))
     plt.close()
 
     dwd.close()
@@ -212,6 +299,19 @@ def calc_p0_for_given_coordinates(args):
 # ==============================================================================
 # settings
 # ==============================================================================
+# # get working directory
+# cwd = os.getcwd()
+# netatmo_folder = os.path.dirname(cwd)
+#
+# # path to dwd
+# path_dwd = os.path.join(netatmo_folder, r"01_data/DWD_5min_to_1hour.h5")
+#
+# # path to netatmo data
+# path_netatmo = os.path.join(netatmo_folder,
+#                             r"01_data/netatmo_Germany_5min_to_1hour_filter_00.h5")
+#
+# savepath = os.path.join(netatmo_folder, r'03_results/01_misplaced_filter')
+
 # path to dwd
 path_dwd = r"D:\bwsyncandshare\Netatmo_DWD\03_dwd\DWD_5min_to_1hour.h5"
 
@@ -219,9 +319,12 @@ path_dwd = r"D:\bwsyncandshare\Netatmo_DWD\03_dwd\DWD_5min_to_1hour.h5"
 path_netatmo = (r"D:\bwsyncandshare\Netatmo_DWD\01_netatmo"
                 r"\netatmo_Germany_5min_to_1hour_filter_00.h5")
 
+# path to station scans
+path_scans = (r'D:\Netatmo_5min\01_data\station_scans')
+
 savepath = (r'D:\Netatmo_5min\03_results\01_misplaced_filter')
 
-x_percent_dwd = 0.1
+multi_processing = True
 
 
 # ==============================================================================
@@ -238,11 +341,12 @@ def process_manager():
 
     dwd_tree = ssp.cKDTree(dwd_coords)
 
-    # initialize multiprocessing
-    my_pool = mp.Pool(3)
-    args = ()
+    if multi_processing:
+        # initialize multiprocessing
+        my_pool = mp.Pool(3)
+        args = ()
 
-    # 1. identify misplaced stations
+    # 1. identify possible misplaced stations
     for stn_id, stn_name in enumerate(netatmo_hf.root.name.read()):
         if stn_id < 40:
             continue
@@ -264,14 +368,20 @@ def process_manager():
         net_north = netatmo_hf.root.coord.northing[stn_id]
         net_east = netatmo_hf.root.coord.easting[stn_id]
 
-        args += (
-            (dwd_tree, net_north, net_east, savepath, path_dwd, df_netatmo,
-             stn_id),)
+        if multi_processing:
+            args += (
+                (dwd_tree, net_north, net_east, savepath, path_dwd, df_netatmo,
+                 stn_id, stn_name),)
+        else:
+            args = (dwd_tree, net_north, net_east, savepath, path_dwd,
+                    df_netatmo, stn_id, stn_name)
+            calc_p0_for_given_coordinates(args)
 
-    my_pool.map(calc_p0_for_given_coordinates, args)
+    if multi_processing:
+        my_pool.map(calc_p0_for_given_coordinates, args)
 
-    my_pool.close()
-    my_pool.join()
+        my_pool.close()
+        my_pool.join()
 
 
 if __name__ == '__main__':
