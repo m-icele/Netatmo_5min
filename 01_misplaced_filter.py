@@ -59,6 +59,9 @@ path_netatmo = os.path.join(netatmo_folder,
 
 savepath = os.path.join(netatmo_folder, r'03_results/01_misplaced_filter')
 
+# path to station scans
+path_scans = os.path.join(netatmo_folder, r'01_data/station_scans')
+
 # # path to dwd
 # path_dwd = r"D:\bwsyncandshare\Netatmo_DWD\03_dwd\DWD_5min_to_1hour.h5"
 #
@@ -68,8 +71,8 @@ savepath = os.path.join(netatmo_folder, r'03_results/01_misplaced_filter')
 # # path_netatmo = (r"D:\bwsyncandshare\Netatmo_DWD\01_netatmo"
 # #                 r"\netatmo_Germany_5min_to_1hour_filter_00.h5")
 #
-# path to station scans
-path_scans = (r'D:\Netatmo_5min\01_data\station_scans')
+# # path to station scans
+# path_scans = (r'D:\Netatmo_5min\01_data\station_scans')
 #
 # savepath = (r'D:\Netatmo_5min\03_results\01_misplaced_filter')
 
