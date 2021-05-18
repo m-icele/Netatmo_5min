@@ -40,39 +40,38 @@ sys.path.append(r'D:\py-sele')
 import mail
 
 import warnings
-
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # ==============================================================================
 # settings
 # ==============================================================================
-# # get working directory
-# cwd = os.getcwd()
-# netatmo_folder = os.path.dirname(cwd)
-#
-# # path to dwd
-# path_dwd = os.path.join(netatmo_folder, r"01_data/DWD_5min_to_1hour.h5")
-#
-# # path to netatmo data
-# path_netatmo = os.path.join(netatmo_folder,
-#                             r"01_data/netatmo_Germany_5min_to_1hour_filter_00.h5")
-#                                 r"\netatmo_Germany_5min_to_1hour_2014_2020.h5")
-#
-# savepath = os.path.join(netatmo_folder, r'03_results/01_misplaced_filter')
+# get working directory
+cwd = os.getcwd()
+netatmo_folder = os.path.dirname(cwd)
 
 # path to dwd
-path_dwd = r"D:\bwsyncandshare\Netatmo_DWD\03_dwd\DWD_5min_to_1hour.h5"
+path_dwd = os.path.join(netatmo_folder, r"01_data/DWD_5min_to_1hour.h5")
 
 # path to netatmo data
-path_netatmo = (r"D:\bwsyncandshare\Netatmo_DWD\01_netatmo"
-                r"\netatmo_Germany_5min_to_1hour_2014_2020.h5")
-# path_netatmo = (r"D:\bwsyncandshare\Netatmo_DWD\01_netatmo"
-#                 r"\netatmo_Germany_5min_to_1hour_filter_00.h5")
+path_netatmo = os.path.join(netatmo_folder,
+                            # r"01_data/netatmo_Germany_5min_to_1hour_filter_00.h5")
+                                r"01_data/netatmo_Germany_5min_to_1hour_2014_2020.h5")
 
+savepath = os.path.join(netatmo_folder, r'03_results/01_misplaced_filter')
+
+# # path to dwd
+# path_dwd = r"D:\bwsyncandshare\Netatmo_DWD\03_dwd\DWD_5min_to_1hour.h5"
+#
+# # path to netatmo data
+# path_netatmo = (r"D:\bwsyncandshare\Netatmo_DWD\01_netatmo"
+#                 r"\netatmo_Germany_5min_to_1hour_2014_2020.h5")
+# # path_netatmo = (r"D:\bwsyncandshare\Netatmo_DWD\01_netatmo"
+# #                 r"\netatmo_Germany_5min_to_1hour_filter_00.h5")
+#
 # path to station scans
 path_scans = (r'D:\Netatmo_5min\01_data\station_scans')
-
-savepath = (r'D:\Netatmo_5min\03_results\01_misplaced_filter')
+#
+# savepath = (r'D:\Netatmo_5min\03_results\01_misplaced_filter')
 
 multi_processing = True
 
@@ -211,8 +210,12 @@ def calc_p0_for_given_coordinates(args):
     ik_list = []
 
     for dwd_id in selected_dwds:
+        # calc distance
         dwd_north = dwd.root.coord.northing[dwd_id]
         dwd_east = dwd.root.coord.easting[dwd_id]
+
+        distance = np.sqrt(
+            (net_east - dwd_east) ** 2 + (net_north - dwd_north) ** 2)
 
         df_dwd = pd.DataFrame(index=dwd.root.timestamps.isoformat.read(),
                               columns=['dwd'],
@@ -245,6 +248,7 @@ def calc_p0_for_given_coordinates(args):
             dwd.close()
             return
     except (ValueError, IndexError):
+        plt.close()
         dwd.close()
         return
 
@@ -287,9 +291,9 @@ def calc_p0_for_given_coordinates(args):
                 init_lat = mac_addresses.loc[stn_name.decode(), 'lat']
                 coords_available = True
 
-            print(os.path.basename(scan)[:10],
-                  mac_addresses.loc[stn_name.decode(), 'lon'],
-                  mac_addresses.loc[stn_name.decode(), 'lat'])
+            # print(os.path.basename(scan)[:10],
+            #       mac_addresses.loc[stn_name.decode(), 'lon'],
+            #       mac_addresses.loc[stn_name.decode(), 'lat'])
         except KeyError:
             continue
 
@@ -316,7 +320,8 @@ def calc_p0_for_given_coordinates(args):
         distance_list = []
         ik_list = []
 
-        for dwd_id in selected_dwds:
+        # for dwd_id in selected_dwds:
+        for dwd_id in  range(dwd.root.name.shape[0]):
             dwd_north = dwd.root.coord.northing[dwd_id]
             dwd_east = dwd.root.coord.easting[dwd_id]
 
@@ -356,6 +361,7 @@ def calc_p0_for_given_coordinates(args):
     # TODO: IK p0 als funktion schreiben
 
     if not station_moved:
+        dwd.close()
         return
 
     # initialize lists
@@ -442,16 +448,16 @@ def process_manager():
 
     if multi_processing:
         # initialize multiprocessing
-        my_pool = mp.Pool(20)
+        my_pool = mp.Pool(10)
         args = ()
 
     # 1. identify possible misplaced stations
     for stn_id, stn_name in enumerate(netatmo_hf.root.name.read()):
-        # if stn_id < 415:
-        #     continue
-        #
-        # if stn_id > 500:
-        #     continue
+        if stn_id < 415:
+            continue
+
+        if stn_id > 500:
+            continue
 
         print(stn_id, stn_name)
 
@@ -486,6 +492,9 @@ def process_manager():
             args = (dwd_tree, net_north, net_east, savepath, path_dwd,
                     df_netatmo, stn_id, stn_name)
             calc_p0_for_given_coordinates(args)
+
+    netatmo_hf.close()
+    dwd.close()
 
     if multi_processing:
         my_pool.map(calc_p0_for_given_coordinates, args)
