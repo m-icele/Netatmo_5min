@@ -245,14 +245,14 @@ def calc_p0_for_given_coordinates(args):
     distance_arr = np.array(distance_list)[idx]
     ik_arr = np.array(ik_list)[idx]
 
+    dwd.close()
+
     try:
         if np.where(ik_arr == np.max(ik_arr))[0][0] < 3:
             plt.close()
-            dwd.close()
             return
     except (ValueError, IndexError):
         plt.close()
-        dwd.close()
         return
 
     # check available coordinates
@@ -323,6 +323,8 @@ def calc_p0_for_given_coordinates(args):
         distance_list = []
         ik_list = []
 
+        dwd = tables.open_file(path_dwd, 'r')
+
         # for dwd_id in selected_dwds:
         for dwd_id in  range(dwd.root.name.shape[0]):
             dwd_north = dwd.root.coord.northing[dwd_id]
@@ -363,8 +365,9 @@ def calc_p0_for_given_coordinates(args):
 
     # TODO: IK p0 als funktion schreiben
 
+    dwd.close()
+
     if not station_moved:
-        dwd.close()
         return
 
     # initialize lists
@@ -372,6 +375,8 @@ def calc_p0_for_given_coordinates(args):
     ik_list = []
 
     fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(8, 4), sharey=True)
+
+    dwd = tables.open_file(path_dwd, 'r')
 
     # calc p0 for all dwd stations
     for dwd_id in range(dwd.root.name.shape[0]):
@@ -414,24 +419,26 @@ def calc_p0_for_given_coordinates(args):
                       p99_ic,
                       marker='o', c='black', s=2)
 
-        ax[0].set_ylim([0, 1])
-        ax[0].set_xlim(left=0)
-        ax[1].set_xlim(left=0)
-        ax[0].set_ylabel('indicator correlation p0/p99 [-]')
-        ax[0].set_xlabel('distance between stations [m]')
-        ax[1].set_xlabel('distance between stations [m]')
-        ax[0].grid()
-        ax[1].grid()
-        ax[0].set_title('{} p0'.format(stn_id))
-        ax[0].set_title('{} p99'.format(stn_id))
-        plt.tight_layout()
+    ax[0].set_ylim([0, 1])
+    ax[0].set_xlim(left=0)
+    ax[1].set_xlim(left=0)
+    ax[0].set_ylabel('indicator correlation p0/p99 [-]')
+    ax[0].set_xlabel('distance between stations [m]')
+    ax[1].set_xlabel('distance between stations [m]')
+    ax[0].grid()
+    ax[1].grid()
+    ax[0].set_title('{} p0'.format(stn_id))
+    ax[0].set_title('{} p99'.format(stn_id))
+    plt.tight_layout()
+
+    dwd.close()
 
     plt.savefig(os.path.join(savepath,
                              '{}_all.png'.format(
                                  stn_id)))
     plt.close()
 
-    dwd.close()
+
     return
 
 
@@ -451,15 +458,15 @@ def process_manager():
 
     if multi_processing:
         # initialize multiprocessing
-        my_pool = mp.Pool(10)
+        my_pool = mp.Pool(20)
         args = ()
 
     # 1. identify possible misplaced stations
     for stn_id, stn_name in enumerate(netatmo_hf.root.name.read()):
-        if stn_id < 415:
+        if stn_id < 0:
             continue
 
-        if stn_id > 500:
+        if stn_id > 2500:
             continue
 
         print(stn_id, stn_name)
